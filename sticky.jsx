@@ -51,6 +51,66 @@ function withResult(prev, output, error) {
   return { ...prev, busy: false, output, error, last: d || prev.last };
 }
 
+// --- motywy kolorystyczne (🎨 w nagłówku otwiera paletę 6×6; wybór zapamiętany)
+// Rząd 1: odcienie neutralne; dalej kolumna = barwa, rząd = ton (głęboki → pastelowy).
+const NEUTRALS = [
+  ["czarny", "rgba(0,0,0,0.88)", "#f0f0f0"],
+  ["grafit", "rgba(28,28,30,0.84)", "#ececec"],
+  ["łupek", "rgba(58,64,74,0.88)", "#eef1f5"],
+  ["stal", "rgba(120,126,136,0.90)", "#ffffff"],
+  ["perła", "rgba(222,224,228,0.94)", "#1d1d1f"],
+  ["biały", "rgba(250,250,252,0.94)", "#1d1d1f"],
+];
+const HUES = [
+  ["czerwony", 355], ["pomarańczowy", 26], ["żółty", 50], ["zielony", 145], ["niebieski", 215], ["fioletowy", 275],
+];
+// [nazwa tonu, nasycenie %, jasność %, krycie, kolor tekstu]
+const TONES = [
+  ["głęboki", 45, 14, 0.9, "#f4f4f4"],
+  ["ciemny", 40, 24, 0.9, "#f4f4f4"],
+  ["średni", 42, 38, 0.92, "#ffffff"],
+  ["jasny", 60, 76, 0.95, "#1d1d1f"],
+  ["pastelowy", 70, 90, 0.95, "#1d1d1f"],
+];
+const THEMES = {};
+NEUTRALS.forEach(([name, bg, fg]) => { THEMES[name] = { bg, fg }; });
+TONES.forEach(([tone, s, l, a, fg]) => HUES.forEach(([hue, h]) => {
+  THEMES[`${hue} ${tone}`] = { bg: `hsla(${h}, ${s}%, ${l}%, ${a})`, fg };
+}));
+const THEME_NAMES = Object.keys(THEMES); // kolejność = rzędy palety 6×6
+// Nazwy z poprzedniej, mniejszej palety → najbliższy odpowiednik.
+const THEME_ALIASES = {
+  ciemny: "grafit", granat: "niebieski głęboki", niebieski: "niebieski ciemny", morski: "zielony głęboki",
+  zielony: "zielony ciemny", oliwka: "żółty głęboki", "brąz": "pomarańczowy głęboki", bordo: "czerwony głęboki",
+  "śliwka": "fioletowy głęboki", fiolet: "fioletowy ciemny", karteczka: "żółty pastelowy",
+  "mięta": "zielony pastelowy", "błękit": "niebieski pastelowy", "róż": "czerwony pastelowy", jasny: "biały",
+};
+const DEFAULT_THEME = "grafit";
+const resolveTheme = (name) => (THEMES[name] ? name : THEME_ALIASES[name]);
+const themeOf = (name) => THEMES[resolveTheme(name)] || THEMES[resolveTheme(DEFAULT_THEME)] || THEMES.grafit;
+// Linie/tła pomocnicze liczone z koloru tekstu — pasują do każdego motywu.
+const mix = (pct) => `color-mix(in srgb, currentColor ${pct}%, transparent)`;
+
+// Paleta 6×6 pod przyciskiem 🎨 (pozycja względem korzenia karteczki).
+const pickerBox = {
+  position: "absolute", top: 30, right: 10, zIndex: 10, padding: 6, borderRadius: 8,
+  display: "grid", gridTemplateColumns: "repeat(6, 18px)", gap: 4,
+  boxShadow: "0 6px 18px rgba(0,0,0,0.45)", border: "1px solid " + mix(20), cursor: "default",
+};
+function themePicker(current, onPick) {
+  const cur = resolveTheme(current);
+  return (
+    <div style={{ ...pickerBox, background: themeOf(current).bg }} data-nodrag="1">
+      {THEME_NAMES.map((name) => (
+        <span key={name} title={name} data-nodrag="1" onClick={() => onPick(name)}
+              style={{ width: 18, height: 18, borderRadius: 4, cursor: "pointer", background: THEMES[name].bg,
+                       boxShadow: name === cur ? "0 0 0 2px " + THEMES[name].fg + ", 0 0 0 3px rgba(0,0,0,0.5)"
+                                              : "inset 0 0 0 1px rgba(127,127,127,0.5)" }} />
+      ))}
+    </div>
+  );
+}
+
 // --- stan widgetu -----------------------------------------------------------
 const _ui = loadUI();
 export const initialState = {
@@ -61,6 +121,7 @@ export const initialState = {
   collapsed: !!_ui.collapsed,
   hidden: !!_ui.hidden,
   height: typeof _ui.height === "number" ? _ui.height : null,
+  theme: resolveTheme(_ui.theme) || DEFAULT_THEME,
 };
 
 export const updateState = (event, prev) => {
@@ -162,14 +223,14 @@ function startResize(e, dispatch) {
 const rootStyle = {
   position: "fixed", width: "360px", pointerEvents: "auto", cursor: "grab",
   fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-  color: "#ececec", background: "rgba(28,28,30,0.84)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: "10px",
+  border: "1px solid " + mix(12), borderRadius: "10px",
   boxShadow: "0 8px 24px rgba(0,0,0,0.35)", padding: "12px 14px",
   fontSize: "12px", lineHeight: 1.45,
 };
 const pinStyle = {
   position: "fixed", pointerEvents: "auto", cursor: "grab",
   fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-  color: "#ececec", background: "rgba(28,28,30,0.84)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: "8px",
+  border: "1px solid " + mix(12), borderRadius: "8px",
   boxShadow: "0 4px 12px rgba(0,0,0,0.28)", padding: "5px 10px",
   fontSize: "12px", fontWeight: 700, whiteSpace: "nowrap", userSelect: "none",
 };
@@ -184,7 +245,7 @@ const ctlWrap = { display: "flex", alignItems: "center", gap: 9, flex: "0 0 auto
 const ctl = { cursor: "pointer", opacity: 0.6, fontSize: 16, lineHeight: 1, userSelect: "none" };
 const row = {
   display: "block", textDecoration: "none", color: "inherit",
-  padding: "2px 0", borderTop: "1px solid rgba(255,255,255,0.08)",
+  padding: "2px 0", borderTop: "1px solid " + mix(8),
 };
 const line = { display: "flex", gap: 6, whiteSpace: "nowrap" };
 const nameC = { flex: 1, overflow: "hidden", textOverflow: "ellipsis" };
@@ -194,7 +255,7 @@ const prob = { fontSize: 11, opacity: 0.75, paddingLeft: 20, whiteSpace: "nowrap
 // Uchwyt zmiany wysokości: niewidoczny pas przy dolnej krawędzi (wchodzi w dolny
 // padding karteczki); widać go tylko po najechaniu, kursor ↕ podpowiada chwyt.
 const handle = { height: 8, margin: "2px 0 -10px", borderRadius: 4, cursor: "ns-resize", background: "transparent" };
-const HANDLE_HOVER = "rgba(255,255,255,0.10)";
+const HANDLE_HOVER = mix(10);
 
 const ICON = { ok: "🟢", warn: "🟡", down: "🔴", paused: "⏸" };
 
@@ -219,11 +280,13 @@ function dataRow(r, widths) {
 
 // --- render -----------------------------------------------------------------
 export const render = (state, dispatch) => {
-  const { output, error, busy, collapsed, hidden, height, last } = state;
+  const { output, error, busy, collapsed, hidden, height, last, theme, picker } = state;
+  const T = themeOf(theme);
+  const paint = { background: T.bg, color: T.fg };
 
   if (hidden) {
     return (
-      <div style={pinStyle} ref={(el) => initDrag(el, () => setUI(dispatch, { hidden: false }))}>
+      <div style={{ ...pinStyle, ...paint }} ref={(el) => initDrag(el, () => setUI(dispatch, { hidden: false }))}>
         📌 __TITLE__
       </div>
     );
@@ -246,6 +309,8 @@ export const render = (state, dispatch) => {
 
   const controls = (
     <span style={ctlWrap}>
+      <span style={{ ...ctl, fontSize: 13 }} data-nodrag="1" title={`Kolor: ${theme}`}
+            onClick={() => dispatch({ type: "UR/SET", patch: { picker: !picker } })}>🎨</span>
       <span style={ctl} data-nodrag="1" title="Odśwież teraz"
             onClick={() => refreshNow(dispatch)}>{busy ? "⏳" : "⟳"}</span>
       <span style={ctl} data-nodrag="1" title={collapsed ? "Rozwiń" : "Zwiń"}
@@ -264,7 +329,8 @@ export const render = (state, dispatch) => {
 
   if (collapsed) {
     return (
-      <div style={{ ...rootStyle, padding: "8px 14px" }} ref={(el) => initDrag(el, null)}>
+      <div style={{ ...rootStyle, ...paint, padding: "8px 14px" }} ref={(el) => initDrag(el, null)}>
+        {picker && themePicker(theme, (name) => setUI(dispatch, { theme: name, picker: false }))}
         <div style={{ ...hdr, marginBottom: 0, ...hdrRow }}>
           <span style={title}>__TITLE__</span>
           <span style={{ ...sub, flex: "0 0 auto" }}>{countsLine}</span>
@@ -275,7 +341,8 @@ export const render = (state, dispatch) => {
   }
 
   return (
-    <div style={rootStyle} ref={(el) => initDrag(el, null)}>
+    <div style={{ ...rootStyle, ...paint }} ref={(el) => initDrag(el, null)}>
+        {picker && themePicker(theme, (name) => setUI(dispatch, { theme: name, picker: false }))}
       <div style={hdr}>
         <div style={hdrRow}>
           <div style={title}>__TITLE__</div>
